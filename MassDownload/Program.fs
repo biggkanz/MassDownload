@@ -22,7 +22,8 @@ let main args =
         sw.Start()
         
         let result =
-            Download.GetFiles uri pattern localPath
+            Download.AsyncGetFiles uri pattern localPath
+            |> Async.RunSynchronously
         
         Log.cyan
             (sprintf "%i files downloaded in %0.1fs, %i failed."

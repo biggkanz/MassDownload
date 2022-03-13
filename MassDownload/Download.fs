@@ -22,68 +22,76 @@ module Download =
 
     /// Get the URLs of all links in a specified page matching a
     /// specified regex pattern.
-    let private getLinks (pageUri : Uri) (filePattern : string) =
-        Log.cyan "Getting names..."
-        let re = Regex(filePattern)
-        let html = HtmlDocument.Load(pageUri.AbsoluteUri)
-        
-        let links =
-            html.Descendants ["a"]
-            |> Seq.choose (fun node ->
-                node.TryGetAttribute("href")
-                |> Option.map (fun att -> att.Value()))
-            |> Seq.filter (re.IsMatch)
-            |> Seq.map (absoluteUri pageUri)
-            |> Seq.distinct
-            |> Array.ofSeq
-        
-        links
+    let private asyncGetLinks (pageUri : Uri) (filePattern : string) =
+        async {
+            Log.cyan "Getting names..."
+            let re = Regex(filePattern)
+            let! html = HtmlDocument.AsyncLoad(pageUri.AbsoluteUri)
+            
+            let links =
+                html.Descendants ["a"]
+                |> Seq.choose (fun node ->
+                    node.TryGetAttribute("href")
+                    |> Option.map (fun att -> att.Value()))
+                |> Seq.filter (re.IsMatch)
+                |> Seq.map (absoluteUri pageUri)
+                |> Seq.distinct
+                |> Array.ofSeq
+            
+            return links
+        }
         
     /// Download a file to the specified local path
-    let private tryDownload (localPath : string) (fileUri : Uri) =
-        
-        let fileName = fileUri.Segments |> Array.last
-        Log.yellow (sprintf "%s - starting download" fileName)
-        
-        let filePath = Path.Combine(localPath, fileName)
-        use client = new WebClient()
-        
-        try
-            client.DownloadFile(fileUri, filePath)
-            Log.green (sprintf "%s - download complete" fileName)
-            Result.Ok fileName
-        with
-        | e ->
-            let message =
-                e.InnerException
-                |> Option.ofObj
-                |> Option.map (fun ie -> ie.Message)
-                |> Option.defaultValue e.Message
-            Log.red (sprintf "%s - error: %s" fileName message)
-            Result.Error e.Message
+    let private asyncTryDownload (localPath : string) (fileUri : Uri) =        
+        async {
+            let fileName = fileUri.Segments |> Array.last
+            Log.yellow (sprintf "%s - starting download" fileName)
+            
+            let filePath = Path.Combine(localPath, fileName)
+            use client = new WebClient()
+            
+            try
+                do!
+                    client.DownloadFileTaskAsync(fileUri, filePath)
+                    |> Async.AwaitTask
+                Log.green (sprintf "%s - download complete" fileName)
+                return (Result.Ok fileName)
+            with
+            | e ->
+                let message =
+                    e.InnerException
+                    |> Option.ofObj
+                    |> Option.map (fun ie -> ie.Message)
+                    |> Option.defaultValue e.Message
+                Log.red (sprintf "%s - error: %s" fileName message)
+                return (Result.Error e.Message)
+        }
 
     /// Download all the files linked to in the specified webpage, whos
     /// link path matches the specified regular expression, to the
     /// specified local path
-    let GetFiles (pageUri: Uri) (filePattern : string) (localPath : string) =
+    let AsyncGetFiles (pageUri: Uri) (filePattern : string) (localPath : string) =
+        async {
+            let! links = asyncGetLinks pageUri filePattern
         
-        let links = getLinks pageUri filePattern
-        
-        let downloadResults =
-            links
-            |> Array.map (tryDownload localPath)
+            let! downloadResults =
+                links
+                |> Array.map (asyncTryDownload localPath)
+                |> Async.Parallel
+                
+            let isOk = function
+                | Ok _ -> true
+                | Error _ -> false
+                
+            let successCount =
+                downloadResults |> Seq.filter isOk |> Seq.length
+                
+            let errorCount =
+                downloadResults |> Seq.filter (isOk >> not) |> Seq.length
             
-        let isOk = function
-            | Ok _ -> true
-            | Error _ -> false
-            
-        let successCount =
-            downloadResults |> Seq.filter isOk |> Seq.length
-            
-        let errorCount =
-            downloadResults |> Seq.filter (isOk >> not) |> Seq.length
-         
-        {|
-          SuccessCount = successCount
-          ErrorCount = errorCount
-        |}
+            return
+                {|
+                  SuccessCount = successCount
+                  ErrorCount = errorCount
+                |}
+        }
