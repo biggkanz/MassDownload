@@ -71,13 +71,19 @@ module Download =
     /// link path matches the specified regular expression, to the
     /// specified local path
     let AsyncGetFiles (pageUri: Uri) (filePattern : string) (localPath : string) =
+        // This could be a parameter:
+        let batchsize = 5
+        
         async {
             let! links = asyncGetLinks pageUri filePattern
         
-            let! downloadResults =
+            let downloadResults =
                 links
-                |> Array.map (asyncTryDownload localPath)
-                |> Async.Parallel
+                |> Seq.map (asyncTryDownload localPath)
+                |> Seq.chunkBySize batchsize
+                |> Seq.collect (Async.Parallel >> Async.RunSynchronously)
+                |> Array.ofSeq
+                
                 
             let isOk = function
                 | Ok _ -> true
