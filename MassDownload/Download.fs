@@ -72,17 +72,15 @@ module Download =
     /// specified local path
     let AsyncGetFiles (pageUri: Uri) (filePattern : string) (localPath : string) =
         // This could be a parameter:
-        let batchsize = 5
+        let throttle = 5
         
         async {
             let! links = asyncGetLinks pageUri filePattern
         
-            let downloadResults =
+            let! downloadResults =
                 links
                 |> Seq.map (asyncTryDownload localPath)
-                |> Seq.chunkBySize batchsize
-                |> Seq.collect (Async.Parallel >> Async.RunSynchronously)
-                |> Array.ofSeq
+                |> (fun items -> Async.Parallel(items, throttle))
                 
                 
             let isOk = function
