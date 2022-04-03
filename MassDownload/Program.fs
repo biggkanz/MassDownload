@@ -6,7 +6,7 @@ open MassDownload
 let main args =
     
     // A program to get multiple files from download links provided on a website
-    // (Quite naive - intented mainly as a basis for demonstrating async programming.)
+    // (Quite naive - intended mainly as a basis for demonstrating async programming.)
     
     // E.g. dotnet run https://minorplanetcenter.net/data "neam.*\.json\.gz$" "c:\temp\downloads"
     // dotnet run http://compling.hss.ntu.edu.sg/omw "\.zip$" "c:\temp\downloads"
